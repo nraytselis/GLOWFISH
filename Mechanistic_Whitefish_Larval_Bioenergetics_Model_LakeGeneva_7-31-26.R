@@ -6,10 +6,8 @@ library(lubridate) #add rows for missing dates
 library(zoo) #interpolate values 
 
 
-#For each model day, we will use larval size and water temperature to growth and respiration (losses)
-#consumption (Fig. 4). For each lake and year, we will run the model until the larval fish is recruited
-#juvenile stage (i.e., reaches 25 mm). The daily growth estimates during this larval stage will be used to estimate the mean 
-#daily growth rate from hatch to recruitment for each year (cohort) in each lake.
+#For each model day, we will use larval size and water temperature to model consumption, respiration (losses), and growth 
+#For each lake and year, we will run the model until the larval fish is recruited (25mm metamorphasis)
 
 #bring in the data 
 GenevaZoops = read_csv("clean_zooplankton_abundance_LakeGeneva.csv")
@@ -181,7 +179,7 @@ zoop_length_mm_df <- GenevaZoopLength %>%
 zoop_length_mm <- zoop_length_mm_df$mean_length[4] #select specifically the daphnia 
 
 
-# Gastric evacuation rate
+# Gastric evacuation rate - Karjalainen et al. 1990
 #The gastric evacuation rate of vendace (Coregonus albula L.) larvae predating on zooplankters in the laboratory
 #Experimental data
 df <- data.frame(
@@ -265,32 +263,24 @@ feeding_model <- function(length_mm,
   # Fish swimming speed
   speed <- length_mm / 1000   # m/s
 
-  
   # Visual acuity
   acuity_deg <- 0.0167 * exp(9.14 -
         2.4 * log(length_mm) +
-        0.229 * log(length_mm)^2
-    )
+        0.229 * log(length_mm)^2)
   
   acuity_rad <- acuity_deg * pi / 180
   
-
   # Reactive distance
-  RD_mm <-
-    zoop_length_mm /
-    (2 * tan(acuity_rad / 2))
+  RD_mm <- zoop_length_mm /(2 * tan(acuity_rad / 2))
   
   RD_m <- RD_mm / 1000
-  
   
   
   # Search volume
   SV <- speed * pi * RD_m^2 * 0.5
   
-  
   # Encounter rate
   encounter_rate <- SV * prey_density        # prey/s
-  
   
   # Capture success - Anneville et al. 2010 (depends on fish predator length)
   capture_success <-
@@ -300,7 +290,6 @@ feeding_model <- function(length_mm,
       0.546789446
     )
   
-
   # Successful attack rate
   capture_rate <- encounter_rate *capture_success       # prey/s
   
@@ -310,39 +299,21 @@ feeding_model <- function(length_mm,
   
   
   ## Stomach capacity limitation - Brett 1971; Koski & Johnson 2002
-  stomach_capacity_ug <-(weight_g *
-       (14.1 - 4.95 * log(weight_g)) /
-       100) * 1e6
+  stomach_capacity_ug <-(weight_g * (14.1 - 4.95 * log(weight_g)) /100) * 1e6 
   
-  evac_rate <- abs(-0.01958333 * temp_C + 0.03433333)
+  evac_rate <- abs(-0.01958333 * temp_C + 0.03433333) #Karjalainen et al. 1990 (The gastric evacuation rate of vendace (Coregonus albula L. ) larvae predating on zooplankters in the laboratory) 
   
-  stomach_biomass_limit <-
-    stomach_capacity_ug *
-    evac_rate *
-    daylight_hours
+  stomach_biomass_limit <- stomach_capacity_ug * evac_rate * daylight_hours
   
-  stomach_prey_limit <-
-    stomach_biomass_limit /
-    Zoop_Weight_ug
+  stomach_prey_limit <- stomach_biomass_limit / Zoop_Weight_ug
   
   ## Actual prey consumed - prey consumed cannot surpass stomach limits
-  captured <-
-    min(
-      captured_available,
-      stomach_prey_limit
-    )
-  
+  captured <-min(captured_available, stomach_prey_limit)
   
   # Convert prey to energy
-  ug_captured <-
-    captured *
-    Zoop_Weight_ug
+  ug_captured <- captured * Zoop_Weight_ug
   
-  
-  J_consumed <-
-    ug_captured *
-    PreyED
-  
+  J_consumed <- ug_captured * PreyED
   
   return(J_consumed)
 }
@@ -355,7 +326,6 @@ metabolism_model <- function(weight_mg,
                              weight_g,
                              temp_C){
   
-  
   # Respiration coefficients - Huuskonen 1998
   RA <- 0.00584
   RB <- -0.05341
@@ -363,17 +333,10 @@ metabolism_model <- function(weight_mg,
   
   
   # Oxygen consumption  - Huuskonen 1998
-  R <- RA *
-    weight_mg^RB *
-    exp(RQ * temp_C)
-  
+  R <- RA * weight_mg^RB * exp(RQ * temp_C)
   
   # Convert oxygen use to energy - energy expenditure (Joules consumed by metabolism per fish per day)
-  respiration_J <-
-    R *
-    weight_g *
-    Oxy_cal
-  
+  respiration_J <- R * weight_g * Oxy_cal
   
   return(respiration_J)
 }
@@ -385,17 +348,11 @@ metabolism_model <- function(weight_mg,
 growth_model <- function(J_consumed,
                          respiration){
   
-  
   assimilated <- J_consumed * Ae
-  
   
   net_energy <- assimilated - respiration
   
-  
-  growth_g <-
-    net_energy /
-    Fish_energy_density
-  
+  growth_g <- net_energy / Fish_energy_density
   
   return(list(
     assimilated = assimilated,
@@ -468,14 +425,11 @@ for(i in seq_len(n_days)){
   growth_rate[i] <- (growth_g[i] / Weight_g[i]) * 100
   
   
-
 # Update size
   Weight_g[i+1] <- Weight_g[i] + growth_g[i]
   
-  
 # Convert weight back to length
   Fish_Length[i+1] <-(Weight_g[i+1] / LW_a)^(1/LW_b)
-  
   
 # Stop if fish exceeds 25mm
   if(Fish_Length[i+1] >= 25){
@@ -491,6 +445,7 @@ for(i in seq_len(n_days)){
 ## Results
 
 results <- data.frame(
+  
   Date = GenevaZoopsFull$date,
   
   Temperature = GenevaZoopsFull$interpolated_temp,

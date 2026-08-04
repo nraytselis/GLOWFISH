@@ -125,8 +125,17 @@ GenevaZoops <- GenevaZoops %>%
 GenevaZoops <- GenevaZoops %>%
   mutate(date = as.Date(paste(year, month, day, sep = "-")), day_of_year = yday(date))
 
+
+unique(GenevaZoops$taxa_name_orig)
+#copepods included: Cyclops, Eudiaptomus gracilis, OtherCopepods
+GenevaZoops = GenevaZoops %>%  filter(taxa_name_orig %in% c("Cyclops", "Eudiaptomus gracilis", "OtherCopepods"))
+#rename all to copepods (cyclops and calanoid) for ease of analysis
+
+GenevaZoops = GenevaZoops %>% mutate(taxa_name_orig = recode(taxa_name_orig, "Cyclops" = "Copepod", "Eudiaptomus gracilis" = "Copepod", "OtherCopepods" = "Copepod"))
+
+
 #filter for daphnia only
-GenevaZoops = GenevaZoops %>% filter(taxa_name_orig == "Daphnia")
+#GenevaZoops = GenevaZoops %>% filter(taxa_name_orig == "Daphnia")
 
 GenevaZoops_interp <- GenevaZoops %>%
   mutate(date = as.Date(date),
@@ -200,8 +209,17 @@ c_R <- coef(model_R)["(Intercept)"] # Intercept for R (0.03433)
 
 ##### Parameters #####
 
+#Energy densitiy of zooplankton - https://esapubs.org/archive/appl/A025/122/appendix-C.php
+#Erik R. Schoen, David A. Beauchamp, Anna R. Buettner, and Nathanael C. Overman. 2015. Temperature and depth mediate resource competition and apparent competition between Mysis diluviana and kokanee. Ecological Applications 25:1962–1975. http://dx.doi.org/10.1890/14-1822.1
+#Above paper cites Luecke and Brandt 1993
+#Cladocerns - 1620 J / g
+#Copepods - 2260 J / g
+
 # Daphnia energy density
-PreyED <- 967.5 / 1e6        # J/ug wet weight
+#PreyED <- 967.5 / 1e6        # J/ug wet weight #Hoefnagel et al. 2018, https://onlinelibrary.wiley.com/doi/full/10.1002/ece3.3933 
+
+PreyED <- 2260 / 1e6 # J/ug, copepods
+
 
 # Assimilation efficiency - Huuskonen assumes a constant assimilation efficiency of 75.3% of ingested energy
 Ae <- 0.753
@@ -219,7 +237,9 @@ Fish_energy_density <- 4286  # J/g wet mass
 
 
 #Zooplankton length-weight model (Daphnia) - Watkins et al. 2011
-Zoop_Weight_ug <- exp(1.468) * zoop_length_mm^2.829 
+#Zoop_Weight_ug <- exp(1.468) * zoop_length_mm^2.829  #Daphnia
+
+Zoop_Weight_ug <- exp(1.953) * zoop_length_mm^2.399 #Copepods
 
 #Daylight Hours
 daylight_hours <- GenevaZoopsFull$hoursdaylight
@@ -332,7 +352,7 @@ metabolism_model <- function(weight_mg,
   RQ <- 0.05060
   
   
-  # Oxygen consumption  - Huuskonen 1998
+  # Oxygen consumption  - Huuskonen 1998 (how much oxygen a fish consumes per gram of body weight per day)
   R <- RA * weight_mg^RB * exp(RQ * temp_C)
   
   # Convert oxygen use to energy - energy expenditure (Joules consumed by metabolism per fish per day)
@@ -514,7 +534,12 @@ run_growth_sim <- function(hatch_day,
     Weight_mg    <- Weight_g[k] * 1000
     
     ## Environmental conditions
+    
+    #as a test, let's keep temp always constant and set it to the mean interpolated temp value
+    #Temp_today <- mean(GenevaZoopsFull$interpolated_temp)
     Temp_today     <- env$interpolated_temp[i]
+    #as a test, let's keep prey density always constant and set it to the mean prey density value
+    #prey_density   <- mean(GenevaZoopsFull$density_m3)
     prey_density   <- env$density_m3[i]
     daylight_today <- env$hoursdaylight[i]
     
@@ -566,16 +591,18 @@ run_growth_sim <- function(hatch_day,
     days_elapsed <- sum(!is.na(growth_g))
   }
   
+  
   list(
     start_date         = env$date[hatch_day],
     hatch_day          = hatch_day,
     days_elapsed       = days_elapsed,
     recruited          = recruited,
-    mean_growth_g_day  = mean(growth_g[1:days_elapsed], na.rm = TRUE),
-    mean_growth_mg_day = 1000 * mean(growth_g[1:days_elapsed], na.rm = TRUE),
+    mean_growth_g_day  = mean(growth_g[1:days_elapsed], na.rm = TRUE), 
+    mean_growth_mg_day = 1000 * mean(growth_g[1:days_elapsed], na.rm = TRUE),#Average miligrams gained per day over the whole simulated period for a given hatch day
     mean_growth_mm_day = (Pred_Length[days_elapsed + 1] -
                             Pred_Length[1]) / days_elapsed,
-    final_length       = max(Pred_Length, na.rm = TRUE)
+    final_length       = max(Pred_Length, na.rm = TRUE),
+    Temperature        = Temp_today
   )
 }
 
@@ -613,21 +640,28 @@ monthly_growth <- cohort_summary %>%
   filter(recruited) %>%
   group_by(month,start_year) %>%
   summarise(
-    mean_days_to_recruitment = mean(days_elapsed),
-    mean_growth_mm_day       = mean(mean_growth_mm_day),
-    mean_growth_mg_day       = mean(mean_growth_mg_day),
+    monthly_mean_days_to_recruitment = mean(days_elapsed),
+    monthly_mean_growth_mm_day       = mean(mean_growth_mm_day),
+    monthly_mean_growth_mg_day       = mean(mean_growth_mg_day),
     n_cohorts                = n()
   )
 
-yearly_growth <- cohort_summary %>%
-  filter(recruited) %>%
-  group_by(start_year) %>%
+
+#Annual mean growth rate represents the average daily mass gain to recruitment across all recruited cohorts(hatch days) within a given year
+yearly_growth <- cohort_summary %>%   
+  filter(recruited) %>%   
+  group_by(start_year) %>%   
   summarise(
-    mean_days_to_recruitment = mean(days_elapsed),
-    mean_growth_mm_day       = mean(mean_growth_mm_day),
-    mean_growth_mg_day       = mean(mean_growth_mg_day),
-    n_cohorts                = n()
-  )
+    annual_mean_days_to_recruitment = mean(days_elapsed),
+    annual_mean_growth_mm_day = mean(mean_growth_mm_day), 
+    annual_mean_growth_mg_day = mean(mean_growth_mg_day),
+    n_cohorts = n(),
+    sd = sd(mean_growth_mm_day), 
+    se_growth_mm_day = sd(mean_growth_mm_day) / sqrt(n_cohorts),
+    sd_recruit = sd(days_elapsed),
+    se_annual_days_to_recruitment = sd(days_elapsed) / sqrt(n_cohorts)
+    )
+  
 
 #select a few years to more easily compare - 1974, 1984, 1994, 2004, 2014, 2024
 
@@ -637,16 +671,16 @@ monthly_growth_select <- cohort_summary_select %>%
   filter(recruited) %>%
   group_by(month,start_year) %>%
   summarise(
-    mean_days_to_recruitment = mean(days_elapsed),
-    mean_growth_mm_day       = mean(mean_growth_mm_day),
-    mean_growth_mg_day       = mean(mean_growth_mg_day),
+    monthly_mean_days_to_recruitment = mean(days_elapsed),
+    monthly_mean_growth_mm_day       = mean(mean_growth_mm_day),
+    monthly_mean_growth_mg_day       = mean(mean_growth_mg_day),
     n_cohorts                = n()
   )
 
 ###########################################################
-ggplot(monthly_growth,
+ ggplot(monthly_growth,
        aes(x = month,
-           y = mean_growth_mm_day, group = as.factor(start_year), color = as.factor(start_year))) +
+           y = monthly_mean_growth_mm_day, group = as.factor(start_year), color = as.factor(start_year))) +
   geom_line() +
   geom_point() +
   labs(
@@ -657,7 +691,7 @@ ggplot(monthly_growth,
 
 ggplot(monthly_growth,
        aes(x = month,
-           y = mean_days_to_recruitment, group = as.factor(start_year), color = as.factor(start_year))) +
+           y = monthly_mean_days_to_recruitment, group = as.factor(start_year), color = as.factor(start_year))) +
   geom_line() +
   geom_point() +
   labs(
@@ -669,31 +703,45 @@ ggplot(monthly_growth,
 
 ggplot(yearly_growth,
        aes(x = start_year,
-           y = mean_growth_mm_day)) +
+           y = annual_mean_growth_mm_day)) +
   geom_line() +
   geom_point() +
   labs(
     x = "Year",
     y = "Mean daily growth rate (mm/day)"
-  ) +
-  theme_minimal()
+  ) + 
+  geom_errorbar(data = yearly_growth,
+                aes(x = start_year, ymin = annual_mean_growth_mm_day - se_growth_mm_day, ymax = annual_mean_growth_mm_day + se_growth_mm_day)) +
+  theme_minimal() 
+  
 
 ggplot(yearly_growth,
        aes(x = start_year,
-           y = mean_days_to_recruitment)) +
+           y = annual_mean_days_to_recruitment)) +
   geom_line() +
   geom_point() +
   labs(
     x = "Year",
     y = "Mean days to recruitment (25 mm)"
   ) +
+  geom_errorbar(data = yearly_growth,
+                aes(x = start_year, ymin = annual_mean_days_to_recruitment - se_annual_days_to_recruitment, ymax = annual_mean_days_to_recruitment + se_annual_days_to_recruitment)) +
   theme_minimal()
 
+TempPredVary1
+TempPredVary2 
+TempConstantPredVary1
+TempConstantPredVary2
+TempVaryPredConstant1
+TempVaryPredConstant2
+
+plot_grid(TempPredVary1,TempConstantPredVary1,TempVaryPredConstant1, ncol = 1, lables = c("TempPredVary", "TempConstantPredVary", "TempVaryPredConstant"))
+plot_grid(TempPredVary2,TempConstantPredVary2,TempVaryPredConstant2, ncol = 1, lables = c("TempPredVary", "TempConstantPredVary", "TempVaryPredConstant"))
 
 #select plots
 ggplot(monthly_growth_select,
        aes(x = month,
-           y = mean_growth_mm_day, group = as.factor(start_year), color = as.factor(start_year))) +
+           y = monthly_mean_growth_mm_day, group = as.factor(start_year), color = as.factor(start_year))) +
   geom_line() +
   geom_point() +
   labs(
@@ -704,7 +752,7 @@ ggplot(monthly_growth_select,
 
 ggplot(monthly_growth_select,
        aes(x = month,
-           y = mean_days_to_recruitment, group = as.factor(start_year), color = as.factor(start_year))) +
+           y = monthly_mean_days_to_recruitment, group = as.factor(start_year), color = as.factor(start_year))) +
   geom_line() +
   geom_point() +
   labs(
@@ -712,5 +760,52 @@ ggplot(monthly_growth_select,
     y = "Mean days to recruitment (25 mm)"
   ) +
   theme_minimal()
+
+
+###How do these relate to zooplankton densities?
+GenevaZoopsFull$month <- month(GenevaZoopsFull$date)
+
+GenevaZoopsFullSelect = GenevaZoopsFull %>% filter(year %in% c("1974", "1984", "1994", "2004", "2014", "2024"))
+
+GenevaZoopsFullSelect2 = GenevaZoopsFull %>% filter(year %in% c("2018", "2019", "2021", "2022", "2023", "2024"))
+
+
+GenevaZoopsFullSelectB <- GenevaZoopsFullSelect2 %>%
+  group_by(month,year) %>%
+  summarise(
+    mean_density_zoops = mean(density_m3)
+  )
+
+#In past ~5 years, copepod densities have remained much more constant over time
+ggplot(GenevaZoopsFullSelectB,
+       aes(x = month,
+           y = mean_density_zoops, group = as.factor(year), color = as.factor(year))) +
+  geom_line() +
+  geom_point() +
+  labs(
+    x = "month",
+    y = "Mean Daphnia Density (m3)"
+  ) +
+  theme_minimal() 
+
+
+###How does temp relate to time of year?
+
+ggplot(GenevaZoopsFull, aes(x = day_of_year, y = interpolated_temp, group = as.factor(year), color = as.factor(year))) + 
+  geom_line()
+
+ggplot(Temp, aes(x = day_of_year, y = W_value, group = as.factor(year), color = as.factor(year))) + 
+  geom_line()
+
+
+
+####recruitment timing
+cohort_summary = cohort_summary %>% mutate(day_of_year = yday(start_date)) %>%
+mutate(recruitment_day = day_of_year + days_elapsed)
+
+cohort_summary_select = cohort_summary %>% filter(start_year %in% c("1974", "1984", "1994", "2004", "2014", "2024"))
+
+ggplot(data=cohort_summary_select,aes(x = day_of_year, y = recruitment_day, group = as.factor(start_year), color = as.factor(start_year))) +
+  geom_jitter() + geom_line() + labs(x = "hatch day", y = "recruitment day")
 
 

@@ -81,9 +81,6 @@ ggplot(WS_Ontario,aes(x = Year, y = Ontario_Cover)) + geom_point() + geom_line()
   labs(y = "% Ice Cover", title = "Lake Ontario")
 
 
-
-
-    
 ####Key takeaways for Lake Ontario TP####
       ####total phosphorous has decreased over time across all stations for both spring and summer 
           #for now 
@@ -113,7 +110,7 @@ plot(Ontario_gam)
 ####Key Takeaways - total phosphorous, but not winter severity, is a strong predictor of YCS in Lake Ontario####
 
 
-###Lake Huron
+####Lake Huron####
 TP_Huron_Summary = TP_Huron %>% group_by(Year,Season) %>% summarise(AcrossLakeMeanTP = mean(Value), #mean across multiple stations
                                                                         SD = sd(Value),
                                                                         n = n(),
@@ -151,3 +148,123 @@ Huron_gam <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Huron_Cover) + s
 summary(Huron_gam) #both ice cover and TP significant
 plot(Huron_gam)
 
+
+#####Lake Michigan####
+TP_Michigan_Summary = TP_Michigan %>% group_by(Year,Season) %>% summarise(AcrossLakeMeanTP = mean(Value), #mean across multiple stations
+                                                                        SD = sd(Value),
+                                                                        n = n(),
+                                                                        SE_TP = sd(Value)/sqrt(n))
+levels(TP_Michigan_Summary$Season) <- c(levels(TP_Michigan_Summary$Season), "Winter")
+TP_Michigan_Summary$Season[is.na(TP_Michigan_Summary$Season)] <- "Winter"
+
+ggplot(TP_Michigan_Summary,
+       aes(x = Year,
+           y = AcrossLakeMeanTP, group = Season, color = Season)) +
+  geom_point() +
+  geom_errorbar(aes(
+    ymin = AcrossLakeMeanTP - SE_TP,
+    ymax = AcrossLakeMeanTP + SE_TP)) + theme_minimal() + labs(y = "Mean TP across all stations", title = "Lake Michigan")
+
+
+ggplot(WS_Michigan,aes(x = Year, y = Michigan_Cover)) + geom_point() + geom_line() + theme_minimal() +
+  labs(y = "% Ice Cover", title = "Lake Michigan")
+
+
+ggplot(TP_Michigan_Summary,
+       aes(x = Year,
+           y = AcrossLakeMeanTP, group = Season, color = Season)) +
+  geom_point() +
+  geom_errorbar(aes(
+    ymin = AcrossLakeMeanTP - SE_TP,
+    ymax = AcrossLakeMeanTP + SE_TP)) + theme_minimal() +
+  labs(y = "Mean TP cross all stations", title = "Lake Michigan")
+
+
+ggplot(WS_Michigan,aes(x = Year, y = Michigan_Cover)) + geom_point() + geom_line() + theme_minimal() +
+  labs(y = "% Ice Cover", title = "Lake Michigan")
+
+
+
+Lake_Michigan = Lake_Michigan %>% mutate(Year = year_class) #copy over year class column into new year column 
+
+Lake_Michigan_EnvioData = merge(TP_Michigan_Summary,WS_Michigan,by = "Year")
+
+Lake_Michigan_alldata = merge(Lake_Michigan_EnvioData,Lake_Michigan, by = "Year")
+
+Lake_Michigan_alldata_select = Lake_Michigan_alldata %>% select(c(1,2,3,6,7,23,24,25))
+
+Michigan_gam <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Michigan_Cover) + s(Season, bs = "re"), 
+                 data = Lake_Michigan_alldata_select)
+
+summary(Michigan_gam) #TP and Season significant 
+plot(Michigan_gam)
+
+
+####Lake Superior####
+TP_Superior_Summary = TP_Superior %>% group_by(Year,Season) %>% summarise(AcrossLakeMeanTP = mean(Value), #mean across multiple stations
+                                                                          SD = sd(Value),
+                                                                          n = n(),
+                                                                          SE_TP = sd(Value)/sqrt(n))
+ggplot(TP_Superior_Summary,
+       aes(x = Year,
+           y = AcrossLakeMeanTP, group = Season, color = Season)) +
+  geom_point() +
+  geom_errorbar(aes(
+    ymin = AcrossLakeMeanTP - SE_TP,
+    ymax = AcrossLakeMeanTP + SE_TP)) + theme_minimal() + labs(y = "Mean TP across all stations", title = "Lake Superior")
+
+
+ggplot(WS_Superior,aes(x = Year, y = Superior_Cover)) + geom_point() + geom_line() + theme_minimal() +
+  labs(y = "% Ice Cover", title = "Lake Superior")
+
+
+Lake_Superior = Lake_Superior %>% mutate(Year = year_class) #copy over year class column into new year column 
+
+Lake_Superior_EnvioData = merge(TP_Superior_Summary,WS_Superior,by = "Year")
+
+Lake_Superior_alldata = merge(Lake_Superior_EnvioData,Lake_Superior, by = "Year")
+
+Lake_Superior_alldata_select = Lake_Superior_alldata %>% select(c(1,2,3,6,7,23,24,25))
+
+Superior_gam <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Superior_Cover) + s(Season, bs = "re"), 
+                    data = Lake_Superior_alldata_select)
+
+summary(Superior_gam) #TP and Season significant 
+plot(Superior_gam)
+
+
+####Lake Erie####
+TP_Erie_Summary = TP_Erie %>% group_by(Year,Season) %>% summarise(AcrossLakeMeanTP = mean(Value), #mean across multiple stations
+                                                                          SD = sd(Value),
+                                                                          n = n(),
+                                                                          SE_TP = sd(Value)/sqrt(n))
+levels(TP_Erie_Summary$Season) <- c(levels(TP_Erie_Summary$Season), "Winter")
+TP_Erie_Summary$Season[is.na(TP_Erie_Summary$Season)] <- "Winter"
+
+
+ggplot(TP_Erie_Summary,
+       aes(x = Year,
+           y = AcrossLakeMeanTP, group = Season, color = Season)) +
+  geom_point() +
+  geom_errorbar(aes(
+    ymin = AcrossLakeMeanTP - SE_TP,
+    ymax = AcrossLakeMeanTP + SE_TP)) + theme_minimal() + labs(y = "Mean TP across all stations", title = "Lake Erie")
+
+
+ggplot(WS_Erie,aes(x = Year, y = Erie_Cover)) + geom_point() + geom_line() + theme_minimal() +
+  labs(y = "% Ice Cover", title = "Lake Erie")
+
+
+Lake_Erie = Lake_Erie %>% mutate(Year = year_class) #copy over year class column into new year column 
+
+Lake_Erie_EnvioData = merge(TP_Erie_Summary,WS_Erie,by = "Year")
+
+Lake_Erie_alldata = merge(Lake_Erie_EnvioData,Lake_Erie, by = "Year")
+
+Lake_Erie_alldata_select = Lake_Erie_alldata %>% select(c(1,2,3,6,7,23,24,25))
+
+Erie_gam <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Erie_Cover) + s(Season, bs = "re"), 
+                    data = Lake_Erie_alldata_select)
+
+summary(Erie_gam) #TP and Season significant 
+plot(Erie_gam)

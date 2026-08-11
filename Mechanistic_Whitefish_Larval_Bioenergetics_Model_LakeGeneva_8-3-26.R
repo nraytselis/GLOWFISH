@@ -662,6 +662,62 @@ yearly_growth <- cohort_summary %>%
     se_annual_days_to_recruitment = sd(days_elapsed) / sqrt(n_cohorts)
     )
   
+#save different scenarios 
+TempPredVary1 <- yearly_growth
+TempPredVary1$scenario <- "Temp + Copepods vary (interpolated data)"
+
+TempConstantPredVary1 <- yearly_growth
+TempConstantPredVary1$scenario <- "Constant Temp (Mean interpolated Temp) + Copepods vary (interpolated data)"
+
+TempVaryPredConstant1 <- yearly_growth
+TempVaryPredConstant1$scenario <- "Temp vary (interpolated data) + Constant Copepods (Mean interpolated copepod density)"
+
+all_growth <- rbind(
+  TempPredVary1,
+  TempConstantPredVary1,
+  TempVaryPredConstant1
+)
+
+
+ggplot(all_growth,
+       aes(x = start_year,
+           y = annual_mean_growth_mm_day,
+           colour = scenario)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(
+    ymin = annual_mean_growth_mm_day - se_growth_mm_day,
+    ymax = annual_mean_growth_mm_day + se_growth_mm_day
+  ),
+  width = 0.2) +
+  labs(
+    x = "Year",
+    y = "Mean daily growth rate (mm/day)",
+    colour = "Scenario"
+  ) +
+  theme_minimal()
+
+
+
+ggplot(all_growth,
+       aes(x = start_year,
+           y = annual_mean_days_to_recruitment,
+           colour = scenario)) +
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(
+    ymin = annual_mean_days_to_recruitment - se_annual_days_to_recruitment,
+    ymax = annual_mean_days_to_recruitment + se_annual_days_to_recruitment
+  ),
+  width = 0.2) +
+  labs(
+    x = "Year",
+    y = "Mean days to recruitment (25 mm)",
+    colour = "Scenario"
+  ) +
+  theme_minimal()
+
+
 
 #select a few years to more easily compare - 1974, 1984, 1994, 2004, 2014, 2024
 
@@ -701,43 +757,6 @@ ggplot(monthly_growth,
   theme_minimal()
 
 
-ggplot(yearly_growth,
-       aes(x = start_year,
-           y = annual_mean_growth_mm_day)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    x = "Year",
-    y = "Mean daily growth rate (mm/day)"
-  ) + 
-  geom_errorbar(data = yearly_growth,
-                aes(x = start_year, ymin = annual_mean_growth_mm_day - se_growth_mm_day, ymax = annual_mean_growth_mm_day + se_growth_mm_day)) +
-  theme_minimal() 
-  
-
-ggplot(yearly_growth,
-       aes(x = start_year,
-           y = annual_mean_days_to_recruitment)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    x = "Year",
-    y = "Mean days to recruitment (25 mm)"
-  ) +
-  geom_errorbar(data = yearly_growth,
-                aes(x = start_year, ymin = annual_mean_days_to_recruitment - se_annual_days_to_recruitment, ymax = annual_mean_days_to_recruitment + se_annual_days_to_recruitment)) +
-  theme_minimal()
-
-TempPredVary1
-TempPredVary2 
-TempConstantPredVary1
-TempConstantPredVary2
-TempVaryPredConstant1
-TempVaryPredConstant2
-
-plot_grid(TempPredVary1,TempConstantPredVary1,TempVaryPredConstant1, ncol = 1, lables = c("TempPredVary", "TempConstantPredVary", "TempVaryPredConstant"))
-plot_grid(TempPredVary2,TempConstantPredVary2,TempVaryPredConstant2, ncol = 1, lables = c("TempPredVary", "TempConstantPredVary", "TempVaryPredConstant"))
-
 #select plots
 ggplot(monthly_growth_select,
        aes(x = month,
@@ -765,10 +784,21 @@ ggplot(monthly_growth_select,
 ###How do these relate to zooplankton densities?
 GenevaZoopsFull$month <- month(GenevaZoopsFull$date)
 
-GenevaZoopsFullSelect = GenevaZoopsFull %>% filter(year %in% c("1974", "1984", "1994", "2004", "2014", "2024"))
+GenevaZoopsFullSummarized <- GenevaZoopsFull %>%
+  group_by(month,year) %>%
+  summarise(
+    mean_density_zoops = mean(density_m3)
+  )
 
-GenevaZoopsFullSelect2 = GenevaZoopsFull %>% filter(year %in% c("2018", "2019", "2021", "2022", "2023", "2024"))
+GenevaZoopsFullSelect = GenevaZoopsFull %>% filter(year %in% c("1974", "1984", "1994", "2004", "2014",  "2020", "2021", "2022", "2023", "2024"))
 
+GenevaZoopsFullSelect2 = GenevaZoopsFull %>% filter(year %in% c("2018", "2019", "2020", "2021", "2022", "2023", "2024"))
+
+GenevaZoopsFullSelectA <- GenevaZoopsFullSelect %>%
+  group_by(month,year) %>%
+  summarise(
+    mean_density_zoops = mean(density_m3)
+  )
 
 GenevaZoopsFullSelectB <- GenevaZoopsFullSelect2 %>%
   group_by(month,year) %>%
@@ -777,27 +807,40 @@ GenevaZoopsFullSelectB <- GenevaZoopsFullSelect2 %>%
   )
 
 #In past ~5 years, copepod densities have remained much more constant over time
-ggplot(GenevaZoopsFullSelectB,
+ZoopPlot = ggplot(GenevaZoopsFullSelectA,
        aes(x = month,
            y = mean_density_zoops, group = as.factor(year), color = as.factor(year))) +
   geom_line() +
   geom_point() +
   labs(
     x = "month",
-    y = "Mean Daphnia Density (m3)"
+    y = "Mean Copepod Density (m3)"
   ) +
   theme_minimal() 
 
+ZoopPlot
+ggplot(GenevaZoopsFullSummarized,
+       aes(x = month,
+           y = mean_density_zoops, group = as.factor(year), color = as.factor(year))) +
+  geom_line() +
+  geom_point() +
+  labs(
+    x = "month",
+    y = "Mean Copepod Density (m3)"
+  ) +
+  theme_minimal() 
 
 ###How does temp relate to time of year?
 
 ggplot(GenevaZoopsFull, aes(x = day_of_year, y = interpolated_temp, group = as.factor(year), color = as.factor(year))) + 
   geom_line()
 
-ggplot(Temp, aes(x = day_of_year, y = W_value, group = as.factor(year), color = as.factor(year))) + 
-  geom_line()
+TempPlot = ggplot(GenevaZoopsFullSelect, aes(x = day_of_year, y = interpolated_temp, group = as.factor(year), color = as.factor(year))) + 
+  geom_line() +
+  theme_minimal() 
 
 
+plot_grid(ZoopPlot,TempPlot)
 
 ####recruitment timing
 cohort_summary = cohort_summary %>% mutate(day_of_year = yday(start_date)) %>%
@@ -807,5 +850,6 @@ cohort_summary_select = cohort_summary %>% filter(start_year %in% c("1974", "198
 
 ggplot(data=cohort_summary_select,aes(x = day_of_year, y = recruitment_day, group = as.factor(start_year), color = as.factor(start_year))) +
   geom_jitter() + geom_line() + labs(x = "hatch day", y = "recruitment day")
+
 
 

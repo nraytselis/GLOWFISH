@@ -1,5 +1,6 @@
 library(dplyr)
 library(tidyverse)
+library(ggplot2)
 
 setwd("~/Desktop/Whitefish/GreatLakes")
 
@@ -199,6 +200,19 @@ Michigan_gam <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Michigan_Cove
 summary(Michigan_gam) #TP and Season significant 
 plot(Michigan_gam)
 
+#Spring and Summer follow a similar pattern 
+TP_Michigan_Summary2 = TP_Michigan %>% group_by(Year) %>% summarise(AcrossLakeSeasonMeanTP = mean(Value), #mean across multiple stations
+                                                                          SD = sd(Value),
+                                                                          n = n(),
+                                                                          SE_TP = sd(Value)/sqrt(n))
+TP_Michigan_Summary2$Year = as.factor(TP_Michigan_Summary2$Year)
+
+Lake_Michigan_EnvioData2 = merge(TP_Michigan_Summary2,WS_Michigan,by = "Year")
+
+Lake_Michigan_alldata2 = merge(Lake_Michigan_EnvioData2,Lake_Michigan, by = "Year")
+
+Lake_Michigan_alldata_select2 = Lake_Michigan_alldata2 %>% select(c(1,2,3,6,7,23,24,25))
+
 
 ####Lake Superior####
 TP_Superior_Summary = TP_Superior %>% group_by(Year,Season) %>% summarise(AcrossLakeMeanTP = mean(Value), #mean across multiple stations
@@ -268,3 +282,140 @@ Erie_gam <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Erie_Cover) + s(S
 
 summary(Erie_gam) #TP and Season significant 
 plot(Erie_gam)
+
+
+
+
+####Mussel Data - Michigan####
+
+MichiganMussels = read_csv("Mussel_Southern_Basin_Lake_Michigan.csv")
+
+MichiganMussels = MichiganMussels[!is.na(MichiganMussels$Biomass_Density_g_per_m2), ]
+
+#sum across depths
+
+MichiganMusselsSummarized = MichiganMussels %>% group_by(Year,Species) %>% summarise(MusselDensity = sum(Biomass_Density_g_per_m2))
+
+ggplot(MichiganMusselsSummarized, aes(x = as.factor(Year), y = MusselDensity, group = Species, color = Species)) + 
+  geom_point() + geom_line() + theme_minimal() +
+  labs(x = "Year", y = "Mussel Density (g/m2)", title = "Lake Michigan Southern Basin")
+
+
+MichiganMusselsSummarizedwide = MichiganMusselsSummarized %>% pivot_wider(
+  names_from = Species, 
+  values_from = MusselDensity) 
+
+
+MichiganALL = merge(Lake_Michigan_alldata_select2,MichiganMusselsSummarizedwide, by = "Year") 
+
+
+MichiganMussel_gam <- gam(fish_abundance_value ~ s(AcrossLakeSeasonMeanTP) + s(Michigan_Cover) + s(Quagga, k = 3) + s(Zebra, k = 3), 
+                          data = MichiganALL)
+summary(MichiganMussel_gam) #I don't really trust this result because of reduce k (degress of freedom)
+
+plot(MichiganMussel_gam)
+
+
+MichiganALLSeason = merge(Lake_Michigan_alldata_select, MichiganMusselsSummarizedwide, by = "Year")
+
+MichiganMussel_gam2 <- gam(fish_abundance_value ~ s(AcrossLakeMeanTP) + s(Michigan_Cover) + s(Quagga, k = 3) + s(Zebra, k = 3) + s(Season, bs = "re"), 
+                          data = MichiganALLSeason)
+
+summary(MichiganMussel_gam2)
+
+
+####ordinal scale - correct way to go about this ####
+
+# Zebra Mussels (Max density around 10)
+MichiganMusselsSummarizedwide$Zebra_ordinal <- cut(MichiganMusselsSummarizedwide$Zebra, 
+                         breaks = c(0, 3, 7, 10), 
+                         labels = c("Low", "Medium", "High"), 
+                         include.lowest = TRUE)
+
+# Quagga Mussels (Max density around 65)
+MichiganMusselsSummarizedwide$Quagga_ordinal <- cut(MichiganMusselsSummarizedwide$Quagga, 
+                         breaks = c(0, 20, 40, 65), 
+                         labels = c("Low", "Medium", "High"), 
+                         include.lowest = TRUE)
+
+
+#Is it more accurate to take the mean TP across both seasons since the YCS is based on the whole year and the other predictors are not season specific???
+
+MichiganALLoridinal2 = merge(Lake_Michigan_alldata_select2,MichiganMusselsSummarizedwide, by = "Year") 
+
+# Convert to ordered factors first
+MichiganALLoridinal2$Quagga_ordered <- ordered(MichiganALLoridinal2$Quagga_ordinal)
+MichiganALLoridinal2$Zebra_ordered  <- ordered(MichiganALLoridinal2$Zebra_ordinal)
+
+#Quagga and Zebra cannot be include as smooths because they are ordinal
+
+
+MichiganMussel_gam2 <- gam(fish_abundance_value ~ s(AcrossLakeSeasonMeanTP) + s(Michigan_Cover) + Quagga_ordered + Zebra_ordered, 
+                          data = MichiganALLoridinal2)
+
+summary(MichiganMussel_gam2)
+
+plot(MichiganMussel_gam2)
+
+#How to interpet parametrix coefficients
+library(marginaleffects)
+plot_predictions(MichiganMussel_gam2, condition = "Quagga_ordered")
+plot_predictions(MichiganMussel_gam2, condition = "Zebra_ordered")
+
+
+
+plot(MichiganMussel_gam2)
+####Erie Mussel Data####
+
+ErieMussels = read_csv("Erie_mussel_data_8-10-26.csv")
+
+#Interpolate missing data for years in between sampling dates 
+library(zoo)
+
+ErieMussels_interp <- ErieMussels %>%
+  arrange(Year) %>%
+  mutate(
+    interpolated_density = na.approx(
+      Dress_spp_density,
+      x = Year,
+      rule = 2, #extends the nearest observed value (key for the beginning)
+      na.rm = FALSE #instead of removing NAs it keeps them in the output
+    )
+  )
+
+
+#creating the df for gamm
+
+TP_Erie_Summary2 = TP_Erie %>% group_by(Year) %>% summarise(AcrossLakeSeasonMeanTP = mean(Value), #mean across multiple stations
+                                                                    SD = sd(Value),
+                                                                    n = n(),
+                                                                    SE_TP = sd(Value)/sqrt(n))
+
+TP_Erie_Summary2$Year = as.factor(TP_Erie_Summary2$Year)
+
+Lake_Erie_EnvioData2 = merge(TP_Erie_Summary2,WS_Erie,by = "Year")
+
+Lake_Erie_alldata2 = merge(Lake_Erie_EnvioData2,Lake_Erie, by = "Year")
+
+Lake_Erie_alldata_select2 = Lake_Erie_alldata2 %>% select(c(1,2,3,6,7,23,24,25))
+
+ErieALL = merge(Lake_Erie_alldata_select2, ErieMussels_interp, by = "Year")
+
+#convert to ordinal
+
+ErieALL$interpolated_Dress_spp_ordinal <- cut(ErieALL$interpolated_density, 
+                                                    breaks = c(350, 1500, 2650, 3800), 
+                                                    labels = c("Low", "Medium", "High"), 
+                                                    include.lowest = TRUE)
+
+ErieALL$interpolated_Dress_spp_ordered <- ordered(ErieALL$interpolated_Dress_spp_ordinal)
+
+
+ErieMussel_gam <- gam(fish_abundance_value ~ s(AcrossLakeSeasonMeanTP) + s(Erie_Cover) + interpolated_Dress_spp_ordered, 
+                           data = ErieALL)
+
+summary(ErieMussel_gam)
+
+plot_predictions(ErieMussel_gam, condition = "interpolated_Dress_spp_ordered")
+
+plot(ErieMussel_gam)

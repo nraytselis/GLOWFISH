@@ -85,7 +85,12 @@ Zoops <- Zoops %>%
   filter(taxa_name_orig %in% copepods)
 
 ggplot(Zoops, aes(x = taxa_name_orig, y = zoop_value)) + 
-  geom_col(fill = "darkorange") + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+  geom_col() + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + facet_wrap(~ year_yyyy) 
+
+Zoopsfiltered = Zoops %>% filter(year_yyyy %in% c("1975","1976","1977","1978","1979","1980","1981","1982","1983"))
+
+ggplot(Zoopsfiltered, aes(x = taxa_name_orig, y = zoop_value)) + 
+  geom_col() + theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) + facet_wrap(~ year_yyyy) 
 
 
 #filter for dominant species, a lot are at very low levels
